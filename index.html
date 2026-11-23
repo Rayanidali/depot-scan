@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Dépôt — Sorties de stock</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+  :root{
+    --bg:#f3f4f6; --card:#fff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb;
+    --accent:#1f6feb; --accent-ink:#fff; --ok:#15803d; --ok-bg:#dcfce7; --warn:#b45309; --warn-bg:#fef3c7;
+    --err:#b91c1c; --err-bg:#fee2e2; --head:#111827;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;-webkit-tap-highlight-color:transparent}
+  header{background:var(--head);color:#fff;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5}
+  header b{font-size:17px;letter-spacing:.2px}
+  header .who{font-size:13px;opacity:.85;display:flex;gap:10px;align-items:center}
+  header button{background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:8px;padding:6px 10px;font-size:13px}
+  main{max-width:480px;margin:0 auto;padding:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:14px}
+  h1{font-size:22px;margin:0 0 4px}
+  h2{font-size:18px;margin:0 0 12px}
+  p.sub{color:var(--muted);margin:0 0 18px;font-size:14px}
+  label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+  input{width:100%;font-size:18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink)}
+  select{width:100%;font-size:18px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);-webkit-appearance:none;appearance:none}
+  input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:12px;padding:16px;font-size:17px;font-weight:600;margin-top:14px;cursor:pointer}
+  .btn.primary{background:var(--accent);color:var(--accent-ink)}
+  .btn.secondary{background:#eef2f7;color:var(--ink)}
+  .btn.ghost{background:transparent;color:var(--muted);font-weight:500}
+  .btn:disabled{opacity:.55}
+  .msg{border-radius:12px;padding:12px 14px;font-size:15px;margin-top:14px;display:none}
+  .msg.err{background:var(--err-bg);color:var(--err);display:block}
+  .msg.warn{background:var(--warn-bg);color:var(--warn);display:block}
+  .hidden{display:none!important}
+  .viewer{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:1/1}
+  .viewer video{width:100%;height:100%;object-fit:cover;display:block}
+  .viewer .frame{position:absolute;inset:18%;border:3px solid rgba(255,255,255,.9);border-radius:16px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}
+  .viewer .hint{position:absolute;left:0;right:0;bottom:10px;text-align:center;color:#fff;font-size:13px;opacity:.9}
+  .or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin:16px 0 4px}
+  .or:before,.or:after{content:"";flex:1;height:1px;background:var(--line)}
+  .row{display:flex;gap:8px}
+  .row input{flex:1}
+  .row .btn{width:auto;margin-top:0;padding:0 18px}
+  .art-ref{font-size:13px;color:var(--muted);font-family:ui-monospace,Menlo,Consolas,monospace}
+  .art-name{font-size:21px;font-weight:700;margin:4px 0 12px}
+  .stock{display:inline-block;border-radius:999px;padding:5px 12px;font-size:14px;font-weight:600;background:#eef2f7}
+  .stock.low{background:var(--warn-bg);color:var(--warn)}
+  .stock.zero{background:var(--err-bg);color:var(--err)}
+  .qty{display:flex;align-items:center;gap:10px;margin-top:8px}
+  .qty button{width:64px;height:64px;border-radius:14px;border:1px solid var(--line);background:#fff;font-size:30px;font-weight:600;color:var(--ink)}
+  .qty input{text-align:center;font-size:30px;font-weight:700;height:64px;padding:0}
+  .done{text-align:center}
+  .done .tick{width:72px;height:72px;border-radius:50%;background:var(--ok-bg);color:var(--ok);display:flex;align-items:center;justify-content:center;font-size:38px;margin:6px auto 14px}
+  .done .big{font-size:20px;font-weight:700}
+  .done .rest{color:var(--muted);margin-top:6px}
+  .hist{font-size:14px}
+  .hist div{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+  .hist div:first-child{border-top:0}
+  .hist span:last-child{color:var(--muted);white-space:nowrap}
+  .demo{font-size:12px;color:var(--muted);background:#fff;border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin-bottom:14px}
+  .demo button{border:1px solid var(--line);background:#f9fafb;border-radius:8px;padding:5px 8px;margin:4px 4px 0 0;font-size:12px}
+  .spin{width:18px;height:18px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%;animation:s .8s linear infinite}
+  @keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <b>Dépôt</b>
+  <div class="who hidden" id="who"><span id="whoName"></span><button id="btnLogout">Déconnexion</button></div>
+</header>
+
+<main>
+  <div class="demo hidden" id="demo">
+    <b>Aperçu de démonstration</b> (vos 304 articles, Sheet simulé). Connexion : identifiant <b>demo</b>, code <b>1234</b>.
+    <div id="demoCodes"></div>
+  </div>
+
+  <!-- CONNEXION -->
+  <section id="vLogin" class="card hidden">
+    <h1>Connexion</h1>
+    <p class="sub">Connecte-toi avec ton identifiant et ton code.</p>
+    <form id="fLogin" autocomplete="on">
+      <label for="inId">Identifiant</label>
+      <input id="inId" autocapitalize="none" autocorrect="off" autocomplete="username" required>
+      <label for="inCode">Code</label>
+      <input id="inCode" type="password" inputmode="numeric" autocomplete="current-password" required>
+      <button class="btn primary" id="btnLogin" type="submit">Se connecter</button>
+      <div class="msg" id="mLogin"></div>
+    </form>
+  </section>
+
+  <!-- SCAN -->
+  <section id="vScan" class="hidden">
+    <div class="card">
+      <h2>Scanner un article</h2>
+      <div class="viewer hidden" id="viewer">
+        <video id="video" playsinline muted></video>
+        <div class="frame"></div>
+        <div class="hint">Place le QR code dans le cadre</div>
+      </div>
+      <button class="btn primary" id="btnCam">📷 Scanner avec la caméra</button>
+      <button class="btn secondary" id="btnPhoto">Prendre le QR en photo</button>
+      <input type="file" id="inPhoto" accept="image/*" capture="environment" class="hidden">
+      <div class="or">ou saisir le code / douchette</div>
+      <form id="fManual" class="row">
+        <input id="inManual" placeholder="ID, référence ou EAN" autocapitalize="characters" autocorrect="off">
+        <button class="btn primary" type="submit">OK</button>
+      </form>
+      <div class="msg" id="mScan"></div>
+    </div>
+    <div class="card hidden" id="histCard">
+      <h2>Mes sorties du jour</h2>
+      <div class="hist" id="hist"></div>
+    </div>
+  </section>
+
+  <!-- ARTICLE -->
+  <section id="vArticle" class="card hidden">
+    <div class="art-ref" id="aRef"></div>
+    <div class="art-name" id="aName"></div>
+    <span class="stock" id="aInfo"></span>
+    <label for="inQty">Quantité à prendre <span id="aUnite"></span></label>
+    <div class="qty">
+      <button type="button" id="qMinus">−</button>
+      <input id="inQty" type="number" inputmode="decimal" min="0" step="any" value="1">
+      <button type="button" id="qPlus">+</button>
+    </div>
+    <label for="inChantier">Chantier (n°)</label>
+    <input id="inChantier" list="dlChantiers" autocomplete="off" placeholder="Ex. 3241">
+    <datalist id="dlChantiers"></datalist>
+    <label for="inPole">Pôle</label>
+    <select id="inPole"><option value="">—</option></select>
+    <button class="btn primary" id="btnValider">Retirer du stock</button>
+    <button class="btn ghost" id="btnAnnuler">Annuler</button>
+    <div class="msg" id="mArticle"></div>
+  </section>
+
+  <!-- CONFIRMATION -->
+  <section id="vDone" class="card done hidden">
+    <div class="tick">✓</div>
+    <div class="big" id="dBig"></div>
+    <div class="rest" id="dRest"></div>
+    <div class="msg" id="dWarn"></div>
+    <button class="btn primary" id="btnNext">Scanner un autre article</button>
+  </section>
+</main>
+
+<script>
+/* ---------- Accès au Sheet (réel via Apps Script, simulé en aperçu) ---------- */
+/* Adresse de l'appli Apps Script (celle qui se termine par /exec) */
+const API_URL = 'https://script.google.com/macros/s/AKfycbwfKOruJCnBCMvaHVQB11NpCjEKp_cWI56OkyeeIxWq6FWciiMUbfVjUYCbmyIaSDpjjA/exec';
+
+const IS_GAS = typeof google !== 'undefined' && google.script && google.script.run;
+const IS_API = !IS_GAS && /^https:\/\/script\.google\.com\/.+\/exec$/.test(API_URL.trim());
+
+const DEMO_ARTS = null; /* remplacé par la liste d'articles dans l'aperçu */
+const MOCK = (() => {
+  const techs = { demo: { nom: 'Technicien Démo', code: '1234' } };
+  const arts = (DEMO_ARTS || [
+    ['ART-001', 'CON-001', 'SAC POUBELLE', 'CONSOMMABLE', '', 6, 'Unité'],
+    ['ART-002', 'ANC-001', "PLATINE D'ENCRAGE ECOFIXA 1", 'ANCRAGE', '', 26, 'Unité']
+  ]).map(a => ({ id: a[0], reference: a[1], designation: a[2], famille: a[3], ean: a[4], pu: a[5], unite: a[6] }));
+  const sessions = {};
+  const find = c => {
+    const k = String(c).trim().toLowerCase();
+    const a = arts.find(x => [x.id, x.reference, x.ean].some(v => v && String(v).toLowerCase() === k));
+    if (!a) throw new Error('Aucun article ne correspond au code « ' + String(c).trim() + ' ».');
+    return a;
+  };
+  const sess = t => { if (!sessions[t]) throw new Error('SESSION_EXPIREE'); return sessions[t]; };
+  return {
+    _arts: arts,
+    connexion(id, code) {
+      const t = techs[String(id).trim().toLowerCase()];
+      if (!t || t.code !== String(code).trim()) throw new Error('Identifiant ou code incorrect.');
+      const token = 'demo-' + Math.random().toString(36).slice(2);
+      sessions[token] = t.nom;
+      return { token, nom: t.nom };
+    },
+    verifierSession(t) { return sessions[t] || null; },
+    deconnexion(t) { delete sessions[t]; return true; },
+    contexte(t) { sess(t); return { chantiers: ['GECINA-2026-044', '2244', '3241', '4455', '5566', '9282'], poles: ['Batiment', 'Vitrerie', 'Etancheite', 'Urgence'] }; },
+    chercherArticle(t, c) { sess(t); return { ...find(c), code: c }; },
+    sortie(t, c, q) {
+      sess(t); q = Number(String(q).replace(',', '.'));
+      if (!q || q <= 0) throw new Error('Quantité invalide.');
+      const a = find(c);
+      return { id: a.id, reference: a.reference, designation: a.designation, quantite: q, unite: a.unite };
+    }
+  };
+})();
+
+function call(fn, ...args) {
+  return new Promise((resolve, reject) => {
+    if (IS_GAS) {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(e => reject(new Error((e && e.message) || String(e))))[fn](...args);
+    } else if (IS_API) {
+      fetch(API_URL.trim(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ fn: fn, args: args })
+      })
+        .then(r => r.json())
+        .then(r => r.ok ? resolve(r.result) : reject(new Error(r.error)))
+        .catch(() => reject(new Error('Pas de connexion au serveur. Vérifie le réseau et réessaie.')));
+    } else {
+      setTimeout(() => { try { resolve(MOCK[fn](...args)); } catch (e) { reject(e); } }, 350);
+    }
+  });
+}
+
+/* ---------- Stockage local ---------- */
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+};
+
+/* ---------- État ---------- */
+const $ = id => document.getElementById(id);
+let token = null, article = null, stream = null, scanning = false;
+let historique = [];
+
+function show(view) {
+  ['vLogin', 'vScan', 'vArticle', 'vDone'].forEach(v => $(v).classList.toggle('hidden', v !== view));
+  if (view !== 'vScan') stopCam();
+}
+function msg(el, text, kind) {
+  el.className = 'msg' + (text ? ' ' + (kind || 'err') : '');
+  el.textContent = text || '';
+}
+function busy(btn, on, label) {
+  btn.disabled = on;
+  if (on) { btn.dataset.l = btn.innerHTML; btn.innerHTML = '<span class="spin"></span>'; }
+  else if (btn.dataset.l) btn.innerHTML = label || btn.dataset.l;
+}
+function handleErr(e, el) {
+  if (e.message === 'SESSION_EXPIREE') { logout(true); return; }
+  msg(el, e.message);
+}
+
+/* ---------- Connexion ---------- */
+$('fLogin').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  msg($('mLogin'), '');
+  busy($('btnLogin'), true);
+  try {
+    const r = await call('connexion', $('inId').value, $('inCode').value);
+    token = r.token;
+    store.set('depot_token', token);
+    store.set('depot_nom', r.nom);
+    store.set('depot_id', $('inId').value.trim());
+    $('inCode').value = '';
+    enter(r.nom);
+  } catch (e) { msg($('mLogin'), e.message); }
+  busy($('btnLogin'), false);
+});
+
+function enter(nom) {
+  $('whoName').textContent = nom;
+  $('who').classList.remove('hidden');
+  chargerHistorique();
+  goScan();
+  call('contexte', token).then(c => {
+    $('dlChantiers').innerHTML = '';
+    c.chantiers.forEach(x => { const o = document.createElement('option'); o.value = x; $('dlChantiers').append(o); });
+    const sel = $('inPole'); sel.length = 1;
+    c.poles.forEach(x => { const o = document.createElement('option'); o.value = o.textContent = x; sel.append(o); });
+    sel.value = store.get('depot_pole') || '';
+  }).catch(() => {});
+  $('inChantier').value = store.get('depot_chantier') || '';
+}
+
+async function logout(expired) {
+  if (token && !expired) call('deconnexion', token).catch(() => {});
+  token = null;
+  store.del('depot_token'); store.del('depot_nom');
+  $('who').classList.add('hidden');
+  $('inId').value = store.get('depot_id') || '';
+  show('vLogin');
+  msg($('mLogin'), expired ? 'Ta session a expiré, reconnecte-toi.' : '', 'warn');
+}
+$('btnLogout').addEventListener('click', () => logout(false));
+
+/* ---------- Historique du jour (sur ce téléphone) ---------- */
+function cleHist() { return 'depot_hist_' + new Date().toISOString().slice(0, 10) + '_' + (store.get('depot_id') || ''); }
+function chargerHistorique() {
+  try { historique = JSON.parse(store.get(cleHist()) || '[]'); } catch (e) { historique = []; }
+  renderHist();
+}
+function renderHist() {
+  $('histCard').classList.toggle('hidden', historique.length === 0);
+  $('hist').innerHTML = '';
+  historique.slice().reverse().forEach(h => {
+    const d = document.createElement('div');
+    const a = document.createElement('span'); a.textContent = h.q + ' × ' + (h.des || h.ref);
+    const b = document.createElement('span'); b.textContent = h.t;
+    d.append(a, b); $('hist').append(d);
+  });
+}
+
+/* ---------- Scan ---------- */
+function goScan() {
+  article = null;
+  msg($('mScan'), '');
+  $('inManual').value = '';
+  show('vScan');
+  if (!('ontouchstart' in window)) setTimeout(() => $('inManual').focus(), 50); // douchette sur PC/tablette
+}
+
+$('btnCam').addEventListener('click', startCam);
+
+async function startCam() {
+  msg($('mScan'), '');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return camKo();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+  } catch (e) { return camKo(); }
+  const v = $('video');
+  v.srcObject = stream;
+  await v.play().catch(() => {});
+  $('viewer').classList.remove('hidden');
+  $('btnCam').classList.add('hidden');
+  scanning = true;
+  loop();
+}
+function camKo() {
+  msg($('mScan'), 'La caméra directe n\'est pas disponible ici : utilise « Prendre le QR en photo ».', 'warn');
+}
+function stopCam() {
+  scanning = false;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $('viewer').classList.add('hidden');
+  $('btnCam').classList.remove('hidden');
+}
+const cv = document.createElement('canvas');
+const cx = cv.getContext('2d', { willReadFrequently: true });
+function loop() {
+  if (!scanning) return;
+  const v = $('video');
+  if (v.readyState >= 2 && v.videoWidth) {
+    const s = Math.min(1, 640 / Math.max(v.videoWidth, v.videoHeight));
+    cv.width = Math.round(v.videoWidth * s); cv.height = Math.round(v.videoHeight * s);
+    cx.drawImage(v, 0, 0, cv.width, cv.height);
+    const img = cx.getImageData(0, 0, cv.width, cv.height);
+    const r = window.jsQR && jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+    if (r && r.data) { stopCam(); onCode(r.data); return; }
+  }
+  requestAnimationFrame(loop);
+}
+
+$('btnPhoto').addEventListener('click', () => { $('inPhoto').value = ''; $('inPhoto').click(); });
+$('inPhoto').addEventListener('change', ev => {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  const im = new Image();
+  im.onload = () => {
+    let code = null;
+    for (const max of [1000, 1600, 600]) {
+      const s = Math.min(1, max / Math.max(im.width, im.height));
+      cv.width = Math.round(im.width * s); cv.height = Math.round(im.height * s);
+      cx.drawImage(im, 0, 0, cv.width, cv.height);
+      const d = cx.getImageData(0, 0, cv.width, cv.height);
+      const r = window.jsQR && jsQR(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' });
+      if (r && r.data) { code = r.data; break; }
+    }
+    URL.revokeObjectURL(url);
+    if (code) onCode(code);
+    else msg($('mScan'), 'QR code non lu. Reprends la photo plus près, bien nette et éclairée.');
+  };
+  im.onerror = () => msg($('mScan'), 'Image illisible.');
+  im.src = url;
+});
+
+$('fManual').addEventListener('submit', ev => {
+  ev.preventDefault();
+  const c = $('inManual').value.trim();
+  if (c) onCode(c);
+});
+
+async function onCode(code) {
+  if (navigator.vibrate) navigator.vibrate(80);
+  msg($('mScan'), 'Recherche de l\'article…', 'warn');
+  try {
+    article = await call('chercherArticle', token, code);
+    msg($('mScan'), '');
+    openArticle();
+  } catch (e) { handleErr(e, $('mScan')); }
+}
+
+/* ---------- Article ---------- */
+function openArticle() {
+  $('aRef').textContent = [article.id, article.reference].filter(Boolean).join(' · ');
+  $('aName').textContent = article.designation || article.reference;
+  $('aInfo').textContent = article.famille || 'Article';
+  $('aUnite').textContent = article.unite ? '(' + article.unite.toLowerCase() + ')' : '';
+  $('inQty').value = 1;
+  msg($('mArticle'), '');
+  $('btnValider').disabled = false;
+  majBouton();
+  show('vArticle');
+}
+function qty() { const n = Number(String($('inQty').value).replace(',', '.')); return n > 0 ? n : 1; }
+function majBouton() { $('btnValider').textContent = 'Retirer ' + qty() + ' du stock'; }
+$('qMinus').addEventListener('click', () => { $('inQty').value = Math.max(1, Math.ceil(qty()) - 1); majBouton(); });
+$('qPlus').addEventListener('click', () => { $('inQty').value = Math.floor(qty()) + 1; majBouton(); });
+$('inQty').addEventListener('input', majBouton);
+$('inQty').addEventListener('focus', e => e.target.select());
+$('btnAnnuler').addEventListener('click', goScan);
+
+$('btnValider').addEventListener('click', async () => {
+  msg($('mArticle'), '');
+  const q = qty();
+  busy($('btnValider'), true);
+  try {
+    const chantier = $('inChantier').value.trim(), pole = $('inPole').value;
+    store.set('depot_chantier', chantier); store.set('depot_pole', pole);
+    const r = await call('sortie', token, article.code, q, chantier, pole);
+    historique.push({ q: r.quantite, ref: r.reference, des: r.designation, t: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) });
+    store.set(cleHist(), JSON.stringify(historique));
+    renderHist();
+    $('dBig').textContent = r.quantite + ' × ' + (r.designation || r.reference);
+    $('dRest').textContent = 'Sortie enregistrée' + (chantier ? ' pour le chantier ' + chantier : '') + '.';
+    msg($('dWarn'), '');
+    show('vDone');
+  } catch (e) {
+    handleErr(e, $('mArticle'));
+  }
+  busy($('btnValider'), false, 'Retirer ' + qty() + ' du stock');
+});
+$('btnNext').addEventListener('click', goScan);
+
+/* ---------- Démarrage ---------- */
+(async function init() {
+  if (!IS_GAS && !IS_API) {
+    $('demo').classList.remove('hidden');
+    const box = $('demoCodes');
+    box.append('QR simulés : ');
+    MOCK._arts.forEach(a => {
+      const b = document.createElement('button');
+      b.textContent = a.reference;
+      b.onclick = () => { if (token && !$('vScan').classList.contains('hidden')) onCode(a.reference); };
+      box.append(b);
+    });
+  }
+  $('inId').value = store.get('depot_id') || '';
+  const t = store.get('depot_token');
+  if (t) {
+    const nom = await call('verifierSession', t).catch(() => null);
+    if (nom) { token = t; enter(nom); return; }
+    store.del('depot_token');
+  }
+  show('vLogin');
+})();
+</script>
+</body>
+</html>
