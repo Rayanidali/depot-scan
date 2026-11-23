@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Dépôt — Sorties de stock</title>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <style>
   :root{
     --bg:#f3f4f6; --card:#fff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb;
@@ -99,10 +99,10 @@
       <div class="viewer hidden" id="viewer">
         <video id="video" playsinline muted></video>
         <div class="frame"></div>
-        <div class="hint">Place le QR code dans le cadre</div>
+        <div class="hint">Place le code (QR, Data Matrix ou code-barres) dans le cadre</div>
       </div>
       <button class="btn primary" id="btnCam">📷 Scanner avec la caméra</button>
-      <button class="btn secondary" id="btnPhoto">Prendre le QR en photo</button>
+      <button class="btn secondary" id="btnPhoto">Prendre le code en photo</button>
       <input type="file" id="inPhoto" accept="image/*" capture="environment" class="hidden">
       <div class="or">ou saisir le code / douchette</div>
       <form id="fManual" class="row">
@@ -319,7 +319,8 @@ async function startCam() {
   msg($('mScan'), '');
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return camKo();
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    try { const tr = stream.getVideoTracks()[0]; const cap = tr.getCapabilities ? tr.getCapabilities() : {}; if (cap.focusMode && cap.focusMode.indexOf('continuous') >= 0) tr.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch (e) {}
   } catch (e) { return camKo(); }
   const v = $('video');
   v.srcObject = stream;
@@ -330,7 +331,7 @@ async function startCam() {
   loop();
 }
 function camKo() {
-  msg($('mScan'), 'La caméra directe n\'est pas disponible ici : utilise « Prendre le QR en photo ».', 'warn');
+  msg($('mScan'), 'La caméra directe n\'est pas disponible ici : utilise « Prendre le code en photo ».', 'warn');
 }
 function stopCam() {
   scanning = false;
@@ -340,18 +341,50 @@ function stopCam() {
 }
 const cv = document.createElement('canvas');
 const cx = cv.getContext('2d', { willReadFrequently: true });
+
+/* Lecture : QR code, Data Matrix (étiquettes Hilti) et codes-barres */
+let zxReader = null;
+function lecteur() {
+  if (zxReader || !window.ZXing) return zxReader;
+  const F = ZXing.BarcodeFormat, hints = new Map();
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [F.QR_CODE, F.DATA_MATRIX, F.CODE_128, F.CODE_39, F.EAN_13, F.EAN_8, F.ITF, F.UPC_A]);
+  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+  zxReader = new ZXing.MultiFormatReader();
+  zxReader.setHints(hints);
+  return zxReader;
+}
+function lireCanvas() {
+  const r = lecteur();
+  if (!r) return null;
+  try {
+    const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(cv)));
+    return r.decodeWithState(bmp).getText();
+  } catch (e) { return null; }
+  finally { try { r.reset(); } catch (e) {} }
+}
+/* dessine une zone de la source (centrée, part = fraction gardée) à la taille max donnée, puis lit */
+function lireZone(src, w, h, part, max) {
+  const sw = w * part, sh = h * part, sx = (w - sw) / 2, sy = (h - sh) / 2;
+  const s = Math.min(1, max / Math.max(sw, sh));
+  const dw = Math.round(sw * s), dh = Math.round(sh * s), m = Math.round(Math.max(dw, dh) * 0.04);
+  cv.width = dw + 2 * m; cv.height = dh + 2 * m;
+  cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); // fond blanc + marge
+  cx.drawImage(src, sx, sy, sw, sh, m, m, dw, dh);
+  return lireCanvas();
+}
+
+let tour = 0;
 function loop() {
   if (!scanning) return;
   const v = $('video');
   if (v.readyState >= 2 && v.videoWidth) {
-    const s = Math.min(1, 640 / Math.max(v.videoWidth, v.videoHeight));
-    cv.width = Math.round(v.videoWidth * s); cv.height = Math.round(v.videoHeight * s);
-    cx.drawImage(v, 0, 0, cv.width, cv.height);
-    const img = cx.getImageData(0, 0, cv.width, cv.height);
-    const r = window.jsQR && jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
-    if (r && r.data) { stopCam(); onCode(r.data); return; }
+    tour++;
+    // alterne zone centrale (petits codes) et image entière
+    const code = tour % 2 ? lireZone(v, v.videoWidth, v.videoHeight, 0.6, 900)
+                          : lireZone(v, v.videoWidth, v.videoHeight, 1, 1200);
+    if (code) { stopCam(); onCode(code); return; }
   }
-  requestAnimationFrame(loop);
+  setTimeout(loop, 60);
 }
 
 $('btnPhoto').addEventListener('click', () => { $('inPhoto').value = ''; $('inPhoto').click(); });
@@ -362,17 +395,14 @@ $('inPhoto').addEventListener('change', ev => {
   const im = new Image();
   im.onload = () => {
     let code = null;
-    for (const max of [1000, 1600, 600]) {
-      const s = Math.min(1, max / Math.max(im.width, im.height));
-      cv.width = Math.round(im.width * s); cv.height = Math.round(im.height * s);
-      cx.drawImage(im, 0, 0, cv.width, cv.height);
-      const d = cx.getImageData(0, 0, cv.width, cv.height);
-      const r = window.jsQR && jsQR(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' });
-      if (r && r.data) { code = r.data; break; }
+    const essais = [[1, 1600], [0.6, 1400], [1, 1000], [0.4, 1200], [1, 2400]];
+    for (const [part, max] of essais) {
+      code = lireZone(im, im.width, im.height, part, max);
+      if (code) break;
     }
     URL.revokeObjectURL(url);
     if (code) onCode(code);
-    else msg($('mScan'), 'QR code non lu. Reprends la photo plus près, bien nette et éclairée.');
+    else msg($('mScan'), 'Code non lu. Reprends la photo plus près, bien nette et éclairée.');
   };
   im.onerror = () => msg($('mScan'), 'Image illisible.');
   im.src = url;
